@@ -1,0 +1,68 @@
+{
+	"cpu": {
+		"model":"Skylake-Client",
+		"features":"-hypervisor,kvm=off,-pcid,-hle,-rtm",
+		"sockets":8,
+		"cores":2,
+		"threads":1,
+		"pinning":{
+			"0":"0",
+			"1":"1",
+			"2":"2",
+			"3":"3",
+			"4":"4",
+			"5":"5",
+			"6":"6",
+			"7":"7",
+			"8":"8",
+			"9":"9",
+			"10":"10",
+			"11":"11",
+			"12":"12",
+			"13":"13",
+			"14":"14",
+			"15":"15"
+		}
+	},
+	"memory": {
+		"size":"8G",
+		"path":""
+	},
+	"passthrough_list": [
+	],
+	"storage_list": [
+		{
+			"interface":"ide",
+			"format":"raw",
+			"file":"maindisk.img",
+			"readonly":false,
+			"cdrom":false,
+			"model":"maindisk"
+		},
+		{
+			"interface":"ide",
+			"format":"raw",
+			"file":"bootloader.img",
+			"readonly":true,
+			"cdrom":true,
+			"model":"bootloader"
+		},
+		{
+			"interface":"ide",
+			"format":"raw",
+			"file":"boot_disk.iso",
+			"readonly":true,
+			"cdrom":true,
+			"model":"boot_disk"
+		}
+	],
+	"network_list": [
+		{
+			"type":"user",
+			"guest_device":"usb-net",
+			"mac":"a2:4d:a0:05:38:61"
+		}
+	],
+	"show_ui":true,
+	"qemu_binary":"qemu-system-x86_64"
+}

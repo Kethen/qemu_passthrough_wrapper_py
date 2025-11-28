@@ -521,6 +521,7 @@ def main():
 
 	if qemu_process is not None:
 		qemu_process.wait()
+
 	if swtpm_process is not None:
 		# should be stopped by qemu going down, if not it might as well be stuck
 		swtpm_process.kill()
@@ -541,7 +542,9 @@ def handle_interrupt(signum, stack_frame):
 		process.wait()
 	if qemu_process is not None:
 		qemu_process.terminate()
-		qemu_process.wait()
+		# there should be a wait happening on the main thread, so if we don't check if the subprocess is waited already, we might actually get stuck
+		if qemu_process.returncode is not None:
+			qemu_process.wait()
 	if swtpm_process is not None:
 		# should be stopped by qemu going down, if not it might as well be stuck
 		swtpm_process.kill()

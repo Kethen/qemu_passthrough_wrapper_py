@@ -30,11 +30,11 @@ def vfio_bind_device(desc, unbind=False):
 	try:
 		path = "{0}/unbind".format(from_path)
 		file = open(path, "w")
-		file.write(desc["id"])
+		file.write(desc["host"])
 		file.close()
 	except:
 		et, ev, et = sys.exc_info();
-		print("failed unbinding {0} {1}, {2}".format(desc["orig_driver"], desc["id"], ev))
+		print("failed unbinding {0} {1}, {2}".format(desc["orig_driver"], desc["host"], ev))
 
 	# register/remove
 	try:
@@ -42,29 +42,35 @@ def vfio_bind_device(desc, unbind=False):
 		if unbind:
 			path = "/sys/bus/pci/drivers/vfio-pci/remove_id"
 		file = open(path, "w")
-		file.write(desc["id"])
+		id_space = desc["id"].replace(":", " ")
+		file.write(id_space)
 		file.close()
 	except:
 		et, ev, et = sys.exc_info();
-		print("failed registering {0} {1}, {2}".format(desc["orig_driver"], desc["id"], ev))
+		action = "registering"
+		if unbind:
+			action = "unregistering"
+		print("failed {0} {1} {2} {3}, {4}".format(action, desc["orig_driver"], desc["id"], desc["host"], ev))
 
 	# bind
 	try:
 		path = "{0}/bind".format(to_path)
 		file = open(path, "w")
-		file.write(desc["id"])
+		file.write(desc["host"])
 		file.close()
 	except:
 		et, ev, et = sys.exc_info();
-		print("failed binding {0} {1}, {2}".format(desc["orig_driver"], desc["id"], ev))
+		print("failed binding {0} {1}, {2}".format(desc["orig_driver"], desc["host"], ev))
 
-def vfio_bind_devices():
-	for desc in passthrough_list:
-		vfio_bind_device(desc)
+def vfio_bind_devices(passthrough_list):
+	for port in passthrough_list:
+		for device in port:
+			vfio_bind_device(device)
 
-def vfio_unbind_devices():
-	for desc in passthrough_list:
-		vfio_bind_device(desc, True)
+def vfio_unbind_devices(passthrough_list):
+	for port in passthrough_list:
+		for device in port:
+			vfio_bind_device(device, True)
 
 def pipe_consumer_thread_func(pipe, out):
 	buf = b''
@@ -80,7 +86,7 @@ def pin_cores_thread_func(pinning, num_cores):
 	sample = "  64182   64195 pts/2    00:00:00 CPU 0/KVM"
 	regex = r"\s+\d+\s+(\d+)\s+\S+\s+\S+\s+(.+)"
 	matcher = re.compile(regex)
-	cpu_regex = "CPU\s+(\d+)/KVM"
+	cpu_regex = r"CPU\s+(\d+)/KVM"
 	cpu_matcher = re.compile(cpu_regex)
 
 	while failure < 40:
@@ -93,7 +99,6 @@ def pin_cores_thread_func(pinning, num_cores):
 			break
 
 		process = subprocess.Popen(args=["ps", "-L", "-w", "-p", "{0}".format(qemu_process.pid)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-		sub_processes.append(process)
 		stdout = []
 		stderr = []
 		stdout_reader_thread = threading.Thread(target = pipe_consumer_thread_func, args = [process.stdout, stdout])
@@ -310,6 +315,10 @@ def gen_ui_arg(args):
 	args.append("-device")
 	args.append("virtio-tablet-pci")
 
+def gen_no_ui_arg(args):
+	args.append("-display")
+	args.append("none")
+
 def gen_usb_arg(args):
 	args.append("-device")
 	args.append("qemu-xhci")
@@ -394,6 +403,24 @@ def gen_tpm_arg(args, swtpm_socket_path):
 	args.append("-device")
 	args.append("tpm-tis,tpmdev=tpm_dev")
 
+def gen_passthrough_arg(args, passthrough_list):
+	port_id = 0
+	args.append("-device")
+	args.append("pcie-root-port,hotplug=off,id=pcie_root_port")
+
+	for port in passthrough_list:
+		function_num = 0
+		for device in port:
+			args.append("-device")
+			arg = "vfio-pci-nohotplug,host={0},multifunction=on".format(device["host"])
+			if "romfile" in device:
+				arg = "{0},romfile={1},rombar=1".format(arg, device["romfile"])
+			if "pcie" in device:
+				arg = "{0},bus=pcie_root_port,addr={1}.{2}".format(arg, hex(port_id)[2:], hex(function_num)[2:])
+			function_num = function_num + 1
+			args.append(arg)
+		port_id = port_id + 1
+
 def main():
 	config = ""
 
@@ -420,7 +447,7 @@ def main():
 		config_file.close()
 	except:
 		et, ev, et = sys.exc_info();
-		print("failed parting config, {0}", ev)
+		print("failed parsing config, {0}", ev)
 		os._exit(1)
 
 	print(config_parsed)
@@ -435,7 +462,13 @@ def main():
 	gen_cpu_arg(args, cpu_config["sockets"], cpu_config["cores"], cpu_config["threads"], cpu_config["model"], features)
 
 	mem_config = config_parsed["memory"]
-	gen_mem_arg(args, mem_config["size"], mem_config["path"])
+	mem_path = ""
+	if "path" in mem_config:
+		mem_path = mem_config["path"]
+	gen_mem_arg(args, mem_config["size"], mem_path)
+	if "passthrough_list" in config_parsed:
+		vfio_bind_devices(config_parsed["passthrough_list"])
+		gen_passthrough_arg(args, config_parsed["passthrough_list"])
 	gen_misc_arg(args)
 	gen_usb_arg(args)
 	readonly_nvram = False
@@ -449,6 +482,9 @@ def main():
 	gen_serial_socket_args(args, "serial_sock")
 	if "show_ui" in config_parsed and config_parsed["show_ui"]:
 		gen_ui_arg(args)
+	else:
+		gen_no_ui_arg(args)
+
 	qemu_binary = "qemu-kvm"
 	if "qemu_binary" in config_parsed:
 		qemu_binary = config_parsed["qemu_binary"]
@@ -471,13 +507,16 @@ def main():
 	if qemu_process is not None:
 		qemu_process.wait()
 	if swtpm_process is not None:
-		swtpm_process.wait()
+		# should be stopped by qemu going down, if not it might as well be stuck
+		swtpm_process.kill()
+
+	if "passthrough_list" in config_parsed:
+		vfio_unbind_devices(config_parsed["passthrough_list"])
 
 	try:
 		os.remove(tpm_socket_path)
 	except:
 		pass
-
 	os._exit(1)
 
 def handle_interrupt(signum, stack_frame):
@@ -489,8 +528,8 @@ def handle_interrupt(signum, stack_frame):
 		qemu_process.terminate()
 		qemu_process.wait()
 	if swtpm_process is not None:
-		swtpm_process.terminate()
-		swtpm_process.wait()
+		# should be stopped by qemu going down, if not it might as well be stuck
+		swtpm_process.kill()
 	try:
 		os.remove(tpm_socket_path)
 	except:

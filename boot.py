@@ -9,9 +9,11 @@ import socket
 import time
 import signal
 import os
+import re
 
 sub_processes = []
 threads = []
+qemu_process = None
 
 def vfio_bind_device(desc, unbind=False):
 	from_path="/sys/bus/pci/drivers/{0}".format(desc["orig_driver"])
@@ -61,14 +63,81 @@ def vfio_unbind_devices():
 	for desc in passthrough_list:
 		vfio_bind_device(desc, True)
 
-def pin_cores(pid):
-	pass
+def pipe_consumer_thread_func(pipe, out):
+	buf = b''
+	while True:
+		r = pipe.read()
+		if len(r) == 0:
+			break
+		buf = buf + r
+	out.append(buf)
+
+def pin_cores_thread_func(pinning, num_cores):
+	failure = 0
+	sample = "  64182   64195 pts/2    00:00:00 CPU 0/KVM"
+	regex = r"\s+\d+\s+(\d+)\s+\S+\s+\S+\s+CPU\s+(\d+)/KVM.*"
+	matcher = re.compile(regex)
+
+	while failure < 40:
+		if qemu_process is None:
+			failure = failure + 1
+			time.sleep(0.25)
+			continue
+
+		process = subprocess.Popen(args=["ps", "-L", "-w", "-p", "{0}".format(qemu_process.pid)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		sub_processes.append(process)
+		stdout = []
+		stderr = []
+		stdout_reader_thread = threading.Thread(target = pipe_consumer_thread_func, args = [process.stdout, stdout])
+		stderr_reader_thread = threading.Thread(target = pipe_consumer_thread_func, args = [process.stderr, stderr])
+		stdout_reader_thread.start()
+		stderr_reader_thread.start()
+		stdout_reader_thread.join()
+		stderr_reader_thread.join()
+		stdout = stdout[0].decode("utf-8")
+		stderr = stderr[0].decode("utf-8")
+
+		cpu_threads = []
+		for line in stdout.split("\n"):
+			result = matcher.match(line)
+			if result is None:
+				continue
+			cpu_threads.append({
+				"lwp":result.group(1),
+				"cpu":result.group(2)
+			})
+
+		if len(cpu_threads) != num_cores:
+			failure = failure + 1
+			time.sleep(0.25)
+			continue
+
+		if "others" in pinning:
+			print("others -> hCPU {0}".format(pinning["others"]))
+			subprocess.run(["taskset", "-apc", pinning["others"], "{0}".format(qemu_process.pid)])
+
+		for thread in cpu_threads:
+			cpu = thread["cpu"]
+			lwp = thread["lwp"]
+			if cpu in pinning:
+				print("vCPU {0} -> hCPU {1}".format(cpu, pinning[cpu]))
+				subprocess.run(["taskset", "-pc", "{0}".format(pinning[cpu]), lwp])
+		print("cpus pinned")
+		break
+
+	if failure == 40:
+		print("failed pinning cpu cores")
+
+def pin_cores(pinning, num_cores):
+	thread = threading.Thread(target=pin_cores_thread_func, args=[pinning, num_cores])
+	thread.start()
+	threads.append(thread)
 
 def watch_qmp_thread_func(qmp_socket_path, sync_reboot_shutdown):
 	qmp_sock = None
 	failure = 0
 
-	while failure < 10:
+	while failure < 40:
 		try:
 			qmp_sock = socket.socket(family=socket.AF_UNIX)
 			qmp_sock.connect(qmp_socket_path)
@@ -78,7 +147,7 @@ def watch_qmp_thread_func(qmp_socket_path, sync_reboot_shutdown):
 			print("failed connecting to qmp socket, {0}".format(ev))
 			failure = failure + 1
 			qmp_sock = None
-			time.sleep(1)
+			time.sleep(0.25)
 
 	if qmp_sock is None:
 		print("failed connecting to qmp socket, giving up")
@@ -210,6 +279,16 @@ def gen_ui_arg(args):
 	args.append("-device")
 	args.append("virtio-vga-gl")
 
+	args.append("-audiodev")
+	args.append("pa,id=pa")
+	args.append("-device")
+	args.append("ich9-intel-hda")
+	args.append("-device")
+	args.append("hda-duplex,audiodev=pa")
+
+	args.append("-device")
+	args.append("virtio-tablet-pci")
+
 def gen_usb_arg(args):
 	args.append("-device")
 	args.append("qemu-xhci")
@@ -255,12 +334,15 @@ def gen_serial_socket_args(args, socket_path):
 	args.append("chardev:serial")
 
 def run_qemu_thread_func(args):
+	global qemu_process
 	process = subprocess.Popen(args)
 	sub_processes.append(process)
+	qemu_process = process
 
 def run_qemu(args, qemu_binary):
 	full_args = [qemu_binary] + args
-	print(full_args)
+	for arg in full_args:
+		print(arg)
 	thread = threading.Thread(target=run_qemu_thread_func, args=[full_args])
 	thread.start()
 	threads.append(thread)
@@ -300,7 +382,10 @@ def main():
 
 	args = []
 	cpu_config = config_parsed["cpu"]
-	gen_cpu_arg(args, cpu_config["sockets"], cpu_config["cores"], cpu_config["threads"], cpu_config["model"], cpu_config["features"])
+	features = ""
+	if "features" in cpu_config:
+		features = cpu_config["features"]
+	gen_cpu_arg(args, cpu_config["sockets"], cpu_config["cores"], cpu_config["threads"], cpu_config["model"], features)
 
 	mem_config = config_parsed["memory"]
 	gen_mem_arg(args, mem_config["size"], mem_config["path"])
@@ -320,6 +405,8 @@ def main():
 
 	run_qemu(args, qemu_binary)
 	watch_qmp("qmp_sock", False)
+	if "pinning" in cpu_config:
+		pin_cores(cpu_config["pinning"], int(cpu_config["sockets"]) * int(cpu_config["cores"]) * int(cpu_config["threads"]))
 
 	for process in sub_processes:
 		process.wait()

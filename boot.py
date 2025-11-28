@@ -14,6 +14,9 @@ import re
 sub_processes = []
 threads = []
 qemu_process = None
+swtpm_process = None
+tpm_socket_path = "tpm_sock"
+
 
 def vfio_bind_device(desc, unbind=False):
 	from_path="/sys/bus/pci/drivers/{0}".format(desc["orig_driver"])
@@ -111,6 +114,8 @@ def pin_cores_thread_func(pinning, num_cores):
 			failure = failure + 1
 			time.sleep(0.25)
 			continue
+
+		time.sleep(5)
 
 		if "others" in pinning:
 			print("others -> hCPU {0}".format(pinning["others"]))
@@ -268,7 +273,7 @@ def gen_misc_arg(args):
 	args.append("-name")
 	args.append("qemu,debug-threads=on")
 
-def gen_uefi_arg(args):
+def gen_uefi_arg(args, readonly):
 	args.append("-drive")
 	args.append("if=pflash,format=raw,file=ovmf.img")
 
@@ -333,19 +338,45 @@ def gen_serial_socket_args(args, socket_path):
 	args.append("-serial")
 	args.append("chardev:serial")
 
-def run_qemu_thread_func(args):
-	global qemu_process
-	process = subprocess.Popen(args)
-	sub_processes.append(process)
-	qemu_process = process
-
 def run_qemu(args, qemu_binary):
+	global qemu_process
 	full_args = [qemu_binary] + args
 	for arg in full_args:
 		print(arg)
-	thread = threading.Thread(target=run_qemu_thread_func, args=[full_args])
-	thread.start()
-	threads.append(thread)
+	process = subprocess.Popen(full_args)
+	qemu_process = process
+
+def run_swtpm(dir, socket_path, swtpm_binary):
+	global swtpm_process
+	try:
+		os.remove(socket_path)
+	except:
+		pass
+	try:
+		os.mkdir(dir)
+	except:
+		et, ev, et = sys.exc_info();
+		print("failed creating swtpm directory, {0}".format(ev))
+	process = subprocess.Popen([swtpm_binary, "socket", "--tpmstate", "dir={0}".format(dir), "--ctrl", "type=unixio,path={0}".format(socket_path), "--tpm2"])
+	swtpm_process = process
+
+	failure = 0
+	while failure < 40:
+		if os.path.exists(socket_path):
+			break
+		failure = failure + 1
+		time.sleep(0.25)
+
+	if failure == 40:
+		print("swtpm start seems to have failed")
+
+def gen_tpm_arg(args, swtpm_socket_path):
+	args.append("-chardev")
+	args.append("socket,id=tpm_char_dev,path={0}".format(swtpm_socket_path))
+	args.append("-tpmdev")
+	args.append("emulator,id=tpm_dev,chardev=tpm_char_dev")
+	args.append("-device")
+	args.append("tpm-tis,tpmdev=tpm_dev")
 
 def main():
 	config = ""
@@ -391,7 +422,10 @@ def main():
 	gen_mem_arg(args, mem_config["size"], mem_config["path"])
 	gen_misc_arg(args)
 	gen_usb_arg(args)
-	gen_uefi_arg(args)
+	readonly_nvram = False
+	if "readonly_nvram" in config_parsed and config_parsed["readonly_nvram"]:
+		readonly_nvram = True
+	gen_uefi_arg(args, readonly_nvram)
 	gen_storage_arg(args, config_parsed["storage_list"])
 	gen_network_arg(args, config_parsed["network_list"])
 	gen_qmp_socket_arg(args, "qmp_sock")
@@ -403,6 +437,13 @@ def main():
 	if "qemu_binary" in config_parsed:
 		qemu_binary = config_parsed["qemu_binary"]
 
+	if "tpm" in config_parsed and config_parsed["tpm"]:
+		swtpm_binary = "swtpm"
+		if "swtpm_binary" in config_parsed:
+			swtpm_binary = config_parsed["swtpm_binary"]
+		run_swtpm("tpm_state", tpm_socket_path, swtpm_binary)
+		gen_tpm_arg(args, tpm_socket_path)
+
 	run_qemu(args, qemu_binary)
 	watch_qmp("qmp_sock", False)
 	if "pinning" in cpu_config:
@@ -413,11 +454,25 @@ def main():
 	for thread in threads:
 		thread.join()
 
+	if qemu_process is not None:
+		qemu_process.wait()
+	if swtpm_process is not None:
+		swtpm_process.wait()
+
+	os.remove(tpm_socket_path)
+
 def handle_interrupt(signum, stack_frame):
 	print("handling signal {0}".format(signum))
 	for process in sub_processes:
 		process.terminate()
 		process.wait()
+	if qemu_process is not None:
+		qemu_process.terminate()
+		qemu_process.wait()
+	if swtpm_process is not None:
+		swtpm_process.terminate()
+		swtpm_process.wait()
+	os.remove(tpm_socket_path)
 	os._exit(1)
 
 def setup_signal_handlers():

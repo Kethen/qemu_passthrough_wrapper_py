@@ -78,14 +78,19 @@ def pipe_consumer_thread_func(pipe, out):
 def pin_cores_thread_func(pinning, num_cores):
 	failure = 0
 	sample = "  64182   64195 pts/2    00:00:00 CPU 0/KVM"
-	regex = r"\s+\d+\s+(\d+)\s+\S+\s+\S+\s+CPU\s+(\d+)/KVM.*"
+	regex = r"\s+\d+\s+(\d+)\s+\S+\s+\S+\s+(.+)"
 	matcher = re.compile(regex)
+	cpu_regex = "CPU\s+(\d+)/KVM"
+	cpu_matcher = re.compile(cpu_regex)
 
 	while failure < 40:
 		if qemu_process is None:
 			failure = failure + 1
 			time.sleep(0.25)
 			continue
+
+		if qemu_process.returncode is not None:
+			break
 
 		process = subprocess.Popen(args=["ps", "-L", "-w", "-p", "{0}".format(qemu_process.pid)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 		sub_processes.append(process)
@@ -101,13 +106,21 @@ def pin_cores_thread_func(pinning, num_cores):
 		stderr = stderr[0].decode("utf-8")
 
 		cpu_threads = []
+		other_threads = []
 		for line in stdout.split("\n"):
 			result = matcher.match(line)
 			if result is None:
 				continue
+			thread_name = result.group(2)
+			cpu_result = cpu_matcher.match(thread_name)
+			if cpu_result is None:
+				other_threads.append({
+					"lwp":result.group(1)
+				})
+				continue
 			cpu_threads.append({
 				"lwp":result.group(1),
-				"cpu":result.group(2)
+				"cpu":cpu_result.group(1)
 			})
 
 		if len(cpu_threads) != num_cores:
@@ -115,11 +128,13 @@ def pin_cores_thread_func(pinning, num_cores):
 			time.sleep(0.25)
 			continue
 
-		time.sleep(5)
 
 		if "others" in pinning:
-			print("others -> hCPU {0}".format(pinning["others"]))
-			subprocess.run(["taskset", "-apc", pinning["others"], "{0}".format(qemu_process.pid)])
+			print("python process {0} -> hCPU {1}".format(os.getpid(), pinning["others"]))
+			subprocess.run(["taskset", "-acp", pinning["others"], "{0}".format(os.getpid())])
+			for thread in other_threads:
+				print("other {0} -> hCPU {1}".format(thread["lwp"], pinning["others"]))
+				subprocess.run(["taskset", "-pc", pinning["others"], "{0}".format(thread["lwp"])])
 
 		for thread in cpu_threads:
 			cpu = thread["cpu"]
@@ -128,7 +143,8 @@ def pin_cores_thread_func(pinning, num_cores):
 				print("vCPU {0} -> hCPU {1}".format(cpu, pinning[cpu]))
 				subprocess.run(["taskset", "-pc", "{0}".format(pinning[cpu]), lwp])
 		print("cpus pinned")
-		break
+
+		time.sleep(10)
 
 	if failure == 40:
 		print("failed pinning cpu cores")
@@ -451,15 +467,18 @@ def main():
 
 	for process in sub_processes:
 		process.wait()
-	for thread in threads:
-		thread.join()
 
 	if qemu_process is not None:
 		qemu_process.wait()
 	if swtpm_process is not None:
 		swtpm_process.wait()
 
-	os.remove(tpm_socket_path)
+	try:
+		os.remove(tpm_socket_path)
+	except:
+		pass
+
+	os._exit(1)
 
 def handle_interrupt(signum, stack_frame):
 	print("handling signal {0}".format(signum))
@@ -472,7 +491,10 @@ def handle_interrupt(signum, stack_frame):
 	if swtpm_process is not None:
 		swtpm_process.terminate()
 		swtpm_process.wait()
-	os.remove(tpm_socket_path)
+	try:
+		os.remove(tpm_socket_path)
+	except:
+		pass
 	os._exit(1)
 
 def setup_signal_handlers():

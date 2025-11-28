@@ -159,7 +159,7 @@ def pin_cores(pinning, num_cores):
 	thread.start()
 	threads.append(thread)
 
-def watch_qmp_thread_func(qmp_socket_path, sync_reboot_shutdown):
+def watch_qmp_thread_func(qmp_socket_path, guest_reboot_script, guest_shutdown_script):
 	qmp_sock = None
 	failure = 0
 
@@ -198,12 +198,16 @@ def watch_qmp_thread_func(qmp_socket_path, sync_reboot_shutdown):
 		if read_parsed != None:
 			read_buf = b""
 			print(read_parsed)
-
+			if "event" in read_parsed and read_parsed["event"] == "SHUTDOWN":
+				if read_parsed["data"]["reason"] == "guest-shutdown":
+					subprocess.run(guest_shutdown_script, shell=True)
+				if read_parsed["data"]["reason"] == "guest-reset":
+					subprocess.run(guest_reboot_script, shell=True)
 		if len(recv) == 0:
 			break
 
-def watch_qmp(qmp_socket_path, sync_reboot_shutdown):
-	thread = threading.Thread(target=watch_qmp_thread_func, args=[qmp_socket_path, sync_reboot_shutdown])
+def watch_qmp(qmp_socket_path, guest_reboot_script, guest_shutdown_script):
+	thread = threading.Thread(target=watch_qmp_thread_func, args=[qmp_socket_path, guest_reboot_script, guest_shutdown_script])
 	thread.start()
 	threads.append(thread)
 
@@ -485,6 +489,9 @@ def main():
 	else:
 		gen_no_ui_arg(args)
 
+	if "pre_script" in config_parsed:
+		subprocess.run(config_parsed["pre_script"], shell=True)
+
 	qemu_binary = "qemu-kvm"
 	if "qemu_binary" in config_parsed:
 		qemu_binary = config_parsed["qemu_binary"]
@@ -497,7 +504,15 @@ def main():
 		gen_tpm_arg(args, tpm_socket_path)
 
 	run_qemu(args, qemu_binary)
-	watch_qmp("qmp_sock", False)
+
+	guest_reboot_script = ""
+	guest_shutdown_script = ""
+	if "guest_reboot_script" in config_parsed:
+		guest_reboot_script = config_parsed["guest_reboot_script"]
+	if "guest_shutdown_script" in config_parsed:
+		guest_shutdown_script = config_parsed["guest_shutdown_script"]
+	watch_qmp("qmp_sock", guest_reboot_script, guest_shutdown_script)
+
 	if "pinning" in cpu_config:
 		pin_cores(cpu_config["pinning"], int(cpu_config["sockets"]) * int(cpu_config["cores"]) * int(cpu_config["threads"]))
 

@@ -10,6 +10,9 @@ import time
 import signal
 import os
 import re
+import random
+
+random.seed()
 
 sub_processes = []
 threads = []
@@ -17,6 +20,11 @@ qemu_process = None
 swtpm_process = None
 tpm_socket_path = "tpm_sock"
 
+def read_if_in_dict(d, name, default):
+	if name in d:
+		return d[name]
+	else:
+		return default
 
 def vfio_bind_device(desc, unbind=False):
 	from_path="/sys/bus/pci/drivers/{0}".format(desc["orig_driver"])
@@ -198,7 +206,7 @@ def watch_qmp_thread_func(qmp_socket_path, guest_reboot_script, guest_shutdown_s
 		if read_parsed != None:
 			read_buf = b""
 			print(read_parsed)
-			if "event" in read_parsed and read_parsed["event"] == "SHUTDOWN":
+			if read_if_in_dict(read_parsed, "event", "") == "SHUTDOWN":
 				if read_parsed["data"]["reason"] == "guest-shutdown":
 					subprocess.run(guest_shutdown_script, shell=True)
 				if read_parsed["data"]["reason"] == "guest-reset":
@@ -222,41 +230,47 @@ def gen_storage_arg(args, storage_list):
 
 		args.append("-drive")
 		drive = "if=none,format={0},file={1}".format(storage["format"], storage["file"])
-		if "cdrom" in storage and storage["cdrom"]:
+		if read_if_in_dict(storage, "cdrom", False):
 			drive="{0},media=cdrom".format(drive)
-		if "readonly" in storage and storage["readonly"]:
+		if read_if_in_dict(storage, "readonly", False):
 			drive="{0},readonly=on".format(drive)
-		if "discard" in storage and storage["discard"]:
+		if read_if_in_dict(storage, "discard", False):
 			drive="{0},discard=on".format(drive)
 		drive="{0},id={1}".format(drive, storage_id_string)
 		args.append(drive)
 
 		args.append("-device")
 		device = ""
-		if storage["interface"] == "ide":
+		interface = read_if_in_dict(storage, "interface", "ide")
+		if interface == "ide":
 			sata_bus = "sata.{0}".format(sata_id)
-			if "cdrom" in storage and storage["cdrom"]:
+			if read_if_in_dict(storage, "cdrom", False):
 				device = "ide-cd"
 				model = "generic_cd"
 			else:
 				device = "ide-hd"
 				model = "generic_hd"
 				rotation_rate = 5400
-				if "is_ssd" in storage and storage["is_ssd"]:
+				if read_if_in_dict(storage, "is_ssd", False):
 					rotation_rate = 1
 				device="{0},rotation_rate={1}".format(device,rotation_rate)
-			if "model" in storage:
-				model = storage["model"]
+			model = read_if_in_dict(storage, "model", model)
 			device = "{0},model={1},drive={2},bus={3}".format(device, model, storage_id_string, sata_bus)
 
 			sata_id = sata_id + 1
 
-		if storage["interface"] == "virtio-blk":
+		if interface == "virtio-blk":
 			device = "virtio-blk,drive={0}".format(storage_id_string)
 
 		args.append(device)
 
 		storage_id = storage_id + 1
+
+def gen_mac():
+	mac = "a2"
+	for i in range(5):
+		mac = "{0}:{1:02X}".format(mac, random.randbytes(1)[0])
+	return mac
 
 def gen_network_arg(args, network_list):
 	network_id = 0
@@ -265,16 +279,17 @@ def gen_network_arg(args, network_list):
 
 		args.append("-netdev")
 		netdev=""
-		if network["type"] == "user":
+		type = read_if_in_dict(network, "type", "user")
+		if type == "user":
 			netdev = "user,id={0}".format(network_id_string)
-		if network["type"] == "tap":
+		if type == "tap":
 			netdev = "tap,ifname={0},id={1},script=no,downscript=no".format(network["ifname"], network_id_string)
 		args.append(netdev)
 
 		args.append("-device")
-		device = "{0},netdev={1}".format(network["guest_device"],network_id_string)
-		if "mac" in network:
-			device = "{0},mac={1}".format(device, network["mac"])
+		guest_device = read_if_in_dict(network, "guest_device", "usb-net")
+		device = "{0},netdev={1}".format(guest_device,network_id_string)
+		device = "{0},mac={1}".format(device, read_if_in_dict(network, "mac", gen_mac()))
 		args.append(device)
 
 		network_id = network_id + 1
@@ -325,7 +340,7 @@ def gen_no_ui_arg(args):
 
 def gen_usb_arg(args):
 	args.append("-device")
-	args.append("qemu-xhci")
+	args.append("nec-usb-xhci")
 
 def gen_cpu_arg(args, sockets, cores, threads, model, features):
 	args.append("-cpu")
@@ -419,7 +434,7 @@ def gen_passthrough_arg(args, passthrough_list):
 			arg = "vfio-pci-nohotplug,host={0},multifunction=on".format(device["host"])
 			if "romfile" in device:
 				arg = "{0},romfile={1},rombar=1".format(arg, device["romfile"])
-			if "pcie" in device:
+			if read_if_in_dict(device, "pcie", False):
 				arg = "{0},bus=pcie_root_port,addr={1}.{2}".format(arg, hex(port_id)[2:], hex(function_num)[2:])
 			function_num = function_num + 1
 			args.append(arg)
@@ -459,32 +474,35 @@ def main():
 	print(opts)
 
 	args = []
-	cpu_config = config_parsed["cpu"]
-	features = ""
-	if "features" in cpu_config:
-		features = cpu_config["features"]
-	gen_cpu_arg(args, cpu_config["sockets"], cpu_config["cores"], cpu_config["threads"], cpu_config["model"], features)
+	cpu_config = read_if_in_dict(config_parsed, "cpu", {
+		"sockets":1,
+		"cores":1,
+		"threads":1,
+		"model":"host",
+		"features":""
+	})
+	gen_cpu_arg(args, read_if_in_dict(cpu_config, "sockets", 1), read_if_in_dict(cpu_config, "cores", 1), read_if_in_dict(cpu_config, "threads", 1), read_if_in_dict(cpu_config, "model", "host"), read_if_in_dict(cpu_config, "features", ""))
 
-	mem_config = config_parsed["memory"]
-	mem_path = ""
-	if "path" in mem_config:
-		mem_path = mem_config["path"]
-	gen_mem_arg(args, mem_config["size"], mem_path)
-	if "passthrough_list" in config_parsed:
-		vfio_bind_devices(config_parsed["passthrough_list"])
-		gen_passthrough_arg(args, config_parsed["passthrough_list"])
+	mem_config = read_if_in_dict(config_parsed, "memory", {
+		"size":"128M",
+		"path":""
+	})
+	gen_mem_arg(args, read_if_in_dict(mem_config, "size", "128M"), read_if_in_dict(mem_config, "path", ""))
+
+	passthrough_list = read_if_in_dict(config_parsed, "passthrough_list", [])
+	vfio_bind_devices(passthrough_list)
+	gen_passthrough_arg(args, passthrough_list)
+
 	gen_misc_arg(args)
 	gen_usb_arg(args)
-	readonly_nvram = False
-	if "readonly_nvram" in config_parsed and config_parsed["readonly_nvram"]:
-		readonly_nvram = True
-	gen_uefi_arg(args, readonly_nvram)
-	gen_storage_arg(args, config_parsed["storage_list"])
-	gen_network_arg(args, config_parsed["network_list"])
+	gen_uefi_arg(args, read_if_in_dict(config_parsed, "readonly_nvram", True))
+	gen_storage_arg(args, read_if_in_dict(config_parsed, "storage_list", []))
+	gen_network_arg(args, read_if_in_dict(config_parsed, "network_list", []))
 	gen_qmp_socket_arg(args, "qmp_sock")
 	gen_monitor_socket_arg(args, "monitor_sock")
 	gen_serial_socket_args(args, "serial_sock")
-	if "show_ui" in config_parsed and config_parsed["show_ui"]:
+
+	if read_if_in_dict(config_parsed, "show_ui", True):
 		gen_ui_arg(args)
 	else:
 		gen_no_ui_arg(args)
@@ -492,25 +510,15 @@ def main():
 	if "pre_script" in config_parsed:
 		subprocess.run(config_parsed["pre_script"], shell=True)
 
-	qemu_binary = "qemu-kvm"
-	if "qemu_binary" in config_parsed:
-		qemu_binary = config_parsed["qemu_binary"]
-
-	if "tpm" in config_parsed and config_parsed["tpm"]:
-		swtpm_binary = "swtpm"
-		if "swtpm_binary" in config_parsed:
-			swtpm_binary = config_parsed["swtpm_binary"]
+	if read_if_in_dict(config_parsed, "tpm", False):
+		swtpm_binary = read_if_in_dict(config_parsed, "swtpm_binary", "swtpm")
 		run_swtpm("tpm_state", tpm_socket_path, swtpm_binary)
 		gen_tpm_arg(args, tpm_socket_path)
 
-	run_qemu(args, qemu_binary)
+	run_qemu(args, read_if_in_dict(config_parsed, "qemu_binary", "qemu-kvm"))
 
-	guest_reboot_script = ""
-	guest_shutdown_script = ""
-	if "guest_reboot_script" in config_parsed:
-		guest_reboot_script = config_parsed["guest_reboot_script"]
-	if "guest_shutdown_script" in config_parsed:
-		guest_shutdown_script = config_parsed["guest_shutdown_script"]
+	guest_reboot_script = read_if_in_dict(config_parsed, "guest_reboot_script", "")
+	guest_shutdown_script = read_if_in_dict(config_parsed, "guest_shutdown_script", "")
 	watch_qmp("qmp_sock", guest_reboot_script, guest_shutdown_script)
 
 	if "pinning" in cpu_config:
@@ -526,8 +534,7 @@ def main():
 		# should be stopped by qemu going down, if not it might as well be stuck
 		swtpm_process.kill()
 
-	if "passthrough_list" in config_parsed:
-		vfio_unbind_devices(config_parsed["passthrough_list"])
+	vfio_unbind_devices(passthrough_list)
 
 	try:
 		os.remove(tpm_socket_path)

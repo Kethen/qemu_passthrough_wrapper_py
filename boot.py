@@ -342,8 +342,14 @@ def gen_usb_arg(args):
 	args.append("-device")
 	args.append("nec-usb-xhci")
 
-def gen_cpu_arg(args, sockets, cores, threads, model, features):
+def gen_cpu_arg(args, cpu_dict):
 	args.append("-cpu")
+	model = read_if_in_dict(cpu_dict, "model", "host")
+	features = read_if_in_dict(cpu_dict, "features", "")
+	sockets = read_if_in_dict(cpu_dict, "sockets", 1)
+	cores = read_if_in_dict(cpu_dict, "cores", 1)
+	threads = read_if_in_dict(cpu_dict, "threads", 1)
+
 	cpu = model
 	if features != "":
 		cpu = "{0},{1}".format(cpu, features)
@@ -352,7 +358,10 @@ def gen_cpu_arg(args, sockets, cores, threads, model, features):
 	args.append("-smp")
 	args.append("sockets={0},cores={1},threads={2}".format(sockets, cores, threads))
 
-def gen_mem_arg(args, size, path):
+def gen_mem_arg(args, mem_dict):
+	size = read_if_in_dict(mem_dict, "size", "128M")
+	path = read_if_in_dict(mem_dict, "path", "")
+
 	args.append("-m")
 	args.append("{0}".format(size))
 
@@ -440,6 +449,64 @@ def gen_passthrough_arg(args, passthrough_list):
 			args.append(arg)
 		port_id = port_id + 1
 
+def gen_smbios_arg(args, smbios_dict):
+	type_0 = read_if_in_dict(smbios_dict, "type_0", {})
+	type_1 = read_if_in_dict(smbios_dict, "type_1", {})
+	type_2 = read_if_in_dict(smbios_dict, "type_2", {})
+	type_3 = read_if_in_dict(smbios_dict, "type_3", {})
+	type_4 = read_if_in_dict(smbios_dict, "type_4", {})
+	type_17 = read_if_in_dict(smbios_dict, "type_17", {})
+
+	# t0
+	vendor = read_if_in_dict(type_0, "vendor", "default_t0_vendor")
+	version = read_if_in_dict(type_0, "version", "default_t0_version")
+	date = read_if_in_dict(type_0, "date", "default_t0_date")
+	release = read_if_in_dict(type_0, "release", "1.0")
+	uefi = read_if_in_dict(type_0, "uefi", "on")
+	args.append("-smbios")
+	args.append("type=0,vendor={0},version={1},date={2},release={3},uefi={4}".format(vendor, version, date, release, uefi))
+
+	# t1
+	manufacturer = read_if_in_dict(type_1, "manufacturer", "default_t1_manufacturer")
+	product = read_if_in_dict(type_1, "product", "default_t1_product")
+	version = read_if_in_dict(type_1, "version", "default_t1_version")
+	serial = read_if_in_dict(type_1, "serial", "default_t1_serial")
+	uuid = read_if_in_dict(type_1, "uuid", "11111111-1111-1111-1111-111111111111")
+	sku = read_if_in_dict(type_1, "sku", "default_t1_sku")
+	family = read_if_in_dict(type_1, "family", "default_t1_family")
+	args.append("-smbios")
+	args.append("type=1,manufacturer={0},product={1},version={2},serial={3},uuid={4},sku={5},family={6}".format(manufacturer, product, version, serial, uuid, sku, family))
+
+	# t2
+	manufacturer = read_if_in_dict(type_2, "manufacturer", "default_t2_manufacturer")
+	product = read_if_in_dict(type_2, "product", "default_t2_product")
+	version = read_if_in_dict(type_2, "version", "default_t2_version")
+	serial = read_if_in_dict(type_2, "serial", "default_t2_serial")
+	asset = read_if_in_dict(type_2, "asset", "default_t2_asset")
+	location = read_if_in_dict(type_2, "location", "default_t2_location")
+	args.append("-smbios")
+	args.append("type=2,manufacturer={0},product={1},version={2},serial={3},asset={4},location={5}".format(manufacturer, product, version, serial, asset, location))
+
+	# t3
+	manufacturer = read_if_in_dict(type_3, "manufacturer", "default_t3_manufacturer")
+	version = read_if_in_dict(type_3, "version", "default_t3_version")
+	serial = read_if_in_dict(type_3, "serial", "default_t3_serial")
+	asset = read_if_in_dict(type_3, "asset", "default_t3_asset")
+	sku = read_if_in_dict(type_3, "sku", "default_t3_sku")
+	args.append("-smbios")
+	args.append("type=3,manufacturer={0},version={1},serial={2},asset={3},sku={4}".format(manufacturer, version, serial, asset, sku))
+
+	# t4
+	manufacturer = read_if_in_dict(type_4, "manufacturer", "default_t4_manufacturer")
+	version = read_if_in_dict(type_4, "version", "default_t4_version")
+	args.append("-smbios")
+	args.append("type=4,manufacturer={0},version={1}".format(manufacturer, version))
+
+	# t17
+	manufacturer = read_if_in_dict(type_17, "manufacturer", "default_t17_manufacturer")
+	args.append("-smbios")
+	args.append("type=17,manufacturer={0}".format(manufacturer))
+
 def main():
 	config = ""
 
@@ -474,20 +541,11 @@ def main():
 	print(opts)
 
 	args = []
-	cpu_config = read_if_in_dict(config_parsed, "cpu", {
-		"sockets":1,
-		"cores":1,
-		"threads":1,
-		"model":"host",
-		"features":""
-	})
-	gen_cpu_arg(args, read_if_in_dict(cpu_config, "sockets", 1), read_if_in_dict(cpu_config, "cores", 1), read_if_in_dict(cpu_config, "threads", 1), read_if_in_dict(cpu_config, "model", "host"), read_if_in_dict(cpu_config, "features", ""))
+	cpu_config = read_if_in_dict(config_parsed, "cpu", {})
+	gen_cpu_arg(args, cpu_config)
 
-	mem_config = read_if_in_dict(config_parsed, "memory", {
-		"size":"128M",
-		"path":""
-	})
-	gen_mem_arg(args, read_if_in_dict(mem_config, "size", "128M"), read_if_in_dict(mem_config, "path", ""))
+	mem_config = read_if_in_dict(config_parsed, "memory", {})
+	gen_mem_arg(args, mem_config)
 
 	passthrough_list = read_if_in_dict(config_parsed, "passthrough_list", [])
 	vfio_bind_devices(passthrough_list)
@@ -501,6 +559,7 @@ def main():
 	gen_qmp_socket_arg(args, "qmp_sock")
 	gen_monitor_socket_arg(args, "monitor_sock")
 	gen_serial_socket_args(args, "serial_sock")
+	gen_smbios_arg(args, read_if_in_dict(config_parsed, "smbios", {}))
 
 	if read_if_in_dict(config_parsed, "show_ui", True):
 		gen_ui_arg(args)

@@ -84,6 +84,46 @@
 			"mac":"a2:4d:a0:05:38:61"
 		}
 	],
+	"smbios":{
+		"type_0":{
+			"vendor":"t0_vendor",
+			"version":"t0_version",
+			"date":"t0_date",
+			"release":"3.0",
+			"uefi":"off"
+		},
+		"type_1":{
+			"manufacturer":"t1_manufacturer",
+			"product":"t1_product",
+			"version":"t1_version",
+			"serial":"t1_serial",
+			"uuid":"33333333-3333-3333-3333-333333333333",
+			"sku":"t1_sku",
+			"family":"t1_family"
+		},
+		"type_2":{
+			"manufacturer":"t2_manufacturer",
+			"product":"t2_product",
+			"version":"t2_version",
+			"serial":"t2_serial",
+			"asset":"t2_asset",
+			"location":"t2_location"
+		},
+		"type_3":{
+			"manufacturer":"t3_manufacturer",
+			"version":"t3_version",
+			"serial":"t3_serial",
+			"asset":"t3_asset",
+			"sku":"t3_sku"
+		},
+		"type_4":{
+			"manufacturer":"t4_manufacturer",
+			"version":"t4_version"
+		},
+		"type_17":{
+			"manufacturer":"t17_manufacturer"
+		}
+	},
 	"show_ui":false,
 	"tpm":true,
 	"qemu_binary":"qemu-system-x86_64",

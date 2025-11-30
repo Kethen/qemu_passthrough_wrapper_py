@@ -1,7 +1,7 @@
 {
 	"cpu": {
 		"model":"Skylake-Client",
-		"features":"vendor=GenuineIntel,-hypervisor,kvm=off,-pcid,-hle,-rtm",
+		"features":"vendor=GenuineIntel,hv_vendor_id=whatever,-hypervisor,kvm=off,-pcid,-hle,-rtm",
 		"sockets":7,
 		"cores":2,
 		"threads":1,
@@ -79,7 +79,8 @@
 	],
 	"network_list": [
 		{
-			"type":"user",
+			"type":"tap",
+			"ifname":"VM_TAP",
 			"guest_device":"usb-net",
 			"mac":"a2:4d:a0:05:38:61"
 		}

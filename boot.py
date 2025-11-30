@@ -247,20 +247,31 @@ def gen_storage_arg(args, storage_list):
 			if read_if_in_dict(storage, "cdrom", False):
 				device = "ide-cd"
 				model = "generic_cd"
+				serial = "generic_cd"
 			else:
 				device = "ide-hd"
 				model = "generic_hd"
+				serial = "generic_hd"
 				rotation_rate = 5400
 				if read_if_in_dict(storage, "is_ssd", False):
 					rotation_rate = 1
 				device="{0},rotation_rate={1}".format(device,rotation_rate)
 			model = read_if_in_dict(storage, "model", model)
-			device = "{0},model={1},drive={2},bus={3}".format(device, model, storage_id_string, sata_bus)
+			serial = read_if_in_dict(storage, "serial", serial)
+			device = "{0},model={1},drive={2},bus={3},serial={4}".format(device, model, storage_id_string, sata_bus, serial)
 
 			sata_id = sata_id + 1
 
 		if interface == "virtio-blk":
 			device = "virtio-blk,drive={0}".format(storage_id_string)
+
+		if interface == "nvme":
+			serial = read_if_in_dict(storage, "serial", "generic_nvme")
+			device = "nvme,drive={0},serial={1}".format(storage_id_string, serial)
+
+		if interface == "usb":
+			serial = read_if_in_dict(storage, "serial", "generic_usb")
+			device = "usb-storage,drive={0},serial={1},removable=true".format(storage_id_string, serial)
 
 		args.append(device)
 
@@ -547,10 +558,6 @@ def main():
 	mem_config = read_if_in_dict(config_parsed, "memory", {})
 	gen_mem_arg(args, mem_config)
 
-	passthrough_list = read_if_in_dict(config_parsed, "passthrough_list", [])
-	vfio_bind_devices(passthrough_list)
-	gen_passthrough_arg(args, passthrough_list)
-
 	gen_misc_arg(args)
 	gen_usb_arg(args)
 	gen_uefi_arg(args, read_if_in_dict(config_parsed, "readonly_nvram", True))
@@ -568,6 +575,10 @@ def main():
 
 	if "pre_script" in config_parsed:
 		subprocess.run(config_parsed["pre_script"], shell=True)
+
+	passthrough_list = read_if_in_dict(config_parsed, "passthrough_list", [])
+	vfio_bind_devices(passthrough_list)
+	gen_passthrough_arg(args, passthrough_list)
 
 	if read_if_in_dict(config_parsed, "tpm", False):
 		swtpm_binary = read_if_in_dict(config_parsed, "swtpm_binary", "swtpm")

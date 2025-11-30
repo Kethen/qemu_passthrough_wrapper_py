@@ -68,7 +68,8 @@
 			"version":"t0_version",
 			"date":"t0_date",
 			"release":"3.0",
-			"uefi":"off"
+			"uefi":"off",
+			"vm":"off"
 		},
 		"type_1":{
 			"manufacturer":"t1_manufacturer",

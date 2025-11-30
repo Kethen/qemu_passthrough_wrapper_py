@@ -474,8 +474,9 @@ def gen_smbios_arg(args, smbios_dict):
 	date = read_if_in_dict(type_0, "date", "default_t0_date")
 	release = read_if_in_dict(type_0, "release", "1.0")
 	uefi = read_if_in_dict(type_0, "uefi", "on")
+	vm = read_if_in_dict(type_0, "vm", "on")
 	args.append("-smbios")
-	args.append("type=0,vendor={0},version={1},date={2},release={3},uefi={4}".format(vendor, version, date, release, uefi))
+	args.append("type=0,vendor={0},version={1},date={2},release={3},uefi={4},vm={5}".format(vendor, version, date, release, uefi, vm))
 
 	# t1
 	manufacturer = read_if_in_dict(type_1, "manufacturer", "default_t1_manufacturer")

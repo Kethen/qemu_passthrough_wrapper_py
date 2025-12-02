@@ -262,7 +262,7 @@ def gen_storage_arg(args, storage_list):
 
 			sata_id = sata_id + 1
 
-		if interface == "virtio-blk":
+		if interface == "virtio":
 			device = "virtio-blk,drive={0}".format(storage_id_string)
 
 		if interface == "nvme":

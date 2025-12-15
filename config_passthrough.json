@@ -127,11 +127,13 @@
 		}
 	},
 	"show_ui":false,
+	"ui_mode":"gtk",
 	"tpm":true,
 	"qemu_binary":"qemu-system-x86_64",
 	"swtpm_binary":"swtpm",
 	"readonly_nvram":true,
 	"pre_script":"bash pre.sh",
 	"guest_reboot_script":"echo guest reboot",
-	"guest_shutdown_script":"echo guest shutdown"
+	"guest_shutdown_script":"echo guest shutdown",
+	"extra_args":[]
 }

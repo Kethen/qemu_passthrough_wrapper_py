@@ -104,6 +104,7 @@
 		}
 	},
 	"show_ui":true,
+	"ui_mode":"sdl",
 	"tpm":true,
 	"qemu_binary":"qemu-system-x86_64",
 	"swtpm_binary":"swtpm",

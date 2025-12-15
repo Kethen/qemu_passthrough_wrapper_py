@@ -326,11 +326,15 @@ def gen_misc_arg(args):
 
 def gen_uefi_arg(args, readonly):
 	args.append("-drive")
-	args.append("if=pflash,format=raw,file=ovmf.img")
+	arg_line = "if=pflash,format=raw,file=ovmf.img"
+	if readonly:
+		arg_line = "{0},readonly=on".format(arg_line)
+	args.append(arg_line)
 
-def gen_ui_arg(args):
+
+def gen_ui_arg(args, mode):
 	args.append("-display")
-	args.append("gtk,gl=on")
+	args.append("{0},gl=on".format(mode))
 
 	args.append("-device")
 	args.append("virtio-vga-gl")
@@ -570,7 +574,7 @@ def main():
 	gen_smbios_arg(args, read_if_in_dict(config_parsed, "smbios", {}))
 
 	if read_if_in_dict(config_parsed, "show_ui", True):
-		gen_ui_arg(args)
+		gen_ui_arg(args, read_if_in_dict(config_parsed, "ui_mode", "gtk"))
 	else:
 		gen_no_ui_arg(args)
 

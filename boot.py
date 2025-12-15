@@ -347,7 +347,9 @@ def gen_ui_arg(args, mode):
 	args.append("hda-duplex,audiodev=pa")
 
 	args.append("-device")
-	args.append("virtio-tablet-pci")
+	args.append("usb-tablet")
+	args.append("-device")
+	args.append("usb-kbd")
 
 def gen_no_ui_arg(args):
 	args.append("-display")

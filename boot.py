@@ -523,6 +523,10 @@ def gen_smbios_arg(args, smbios_dict):
 	args.append("-smbios")
 	args.append("type=17,manufacturer={0}".format(manufacturer))
 
+def gen_extra_args(args, extras):
+	for arg in extras:
+		args.append(arg)
+
 def main():
 	config = ""
 
@@ -572,6 +576,7 @@ def main():
 	gen_monitor_socket_arg(args, "monitor_sock")
 	gen_serial_socket_args(args, "serial_sock")
 	gen_smbios_arg(args, read_if_in_dict(config_parsed, "smbios", {}))
+	gen_extra_args(args, read_if_in_dict(config_parsed, "extra_args", []))
 
 	if read_if_in_dict(config_parsed, "show_ui", True):
 		gen_ui_arg(args, read_if_in_dict(config_parsed, "ui_mode", "gtk"))

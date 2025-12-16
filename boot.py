@@ -324,6 +324,9 @@ def gen_misc_arg(args):
 	args.append("-name")
 	args.append("qemu,debug-threads=on")
 
+	args.append("-vga")
+	args.append("none")
+
 def gen_uefi_arg(args, readonly):
 	args.append("-drive")
 	arg_line = "if=pflash,format=raw,file=ovmf.img"

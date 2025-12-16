@@ -309,7 +309,7 @@ def gen_misc_arg(args):
 	args.append("-nodefaults")
 
 	args.append("-machine")
-	args.append("q35,accel=kvm")
+	args.append("q35,accel=kvm,kernel-irqchip=split")
 
 	args.append("-global")
 	args.append("ICH9-LPC.disable_s3=1")

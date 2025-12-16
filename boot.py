@@ -294,7 +294,7 @@ def gen_network_arg(args, network_list):
 		if type == "user":
 			netdev = "user,id={0}".format(network_id_string)
 		if type == "tap":
-			netdev = "tap,ifname={0},id={1},script=no,downscript=no".format(network["ifname"], network_id_string)
+			netdev = "tap,ifname={0},vhost=on,id={1},script=no,downscript=no".format(network["ifname"], network_id_string)
 		args.append(netdev)
 
 		args.append("-device")

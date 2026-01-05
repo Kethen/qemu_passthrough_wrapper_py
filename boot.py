@@ -327,9 +327,9 @@ def gen_misc_arg(args):
 	args.append("-vga")
 	args.append("none")
 
-def gen_uefi_arg(args, readonly):
+def gen_uefi_arg(args, readonly, ovmf_image):
 	args.append("-drive")
-	arg_line = "if=pflash,format=raw,file=ovmf.img"
+	arg_line = "if=pflash,format=raw,file={0}".format(ovmf_image)
 	if readonly:
 		arg_line = "{0},readonly=on".format(arg_line)
 	args.append(arg_line)
@@ -574,7 +574,7 @@ def main():
 
 	gen_misc_arg(args)
 	gen_usb_arg(args)
-	gen_uefi_arg(args, read_if_in_dict(config_parsed, "readonly_nvram", True))
+	gen_uefi_arg(args, read_if_in_dict(config_parsed, "readonly_nvram", True), read_if_in_dict(config_parsed, "ovmf_image", "ovmf.img"))
 	gen_storage_arg(args, read_if_in_dict(config_parsed, "storage_list", []))
 	gen_network_arg(args, read_if_in_dict(config_parsed, "network_list", []))
 	gen_qmp_socket_arg(args, "qmp_sock")

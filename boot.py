@@ -335,12 +335,12 @@ def gen_uefi_arg(args, readonly, ovmf_image):
 	args.append(arg_line)
 
 
-def gen_ui_arg(args, mode):
+def gen_ui_arg(args, mode, display_card):
 	args.append("-display")
 	args.append("{0},gl=on".format(mode))
 
 	args.append("-device")
-	args.append("virtio-vga-gl")
+	args.append("{0}".format(display_card))
 
 	args.append("-audiodev")
 	args.append("pa,id=pa")
@@ -584,7 +584,9 @@ def main():
 	gen_extra_args(args, read_if_in_dict(config_parsed, "extra_args", []))
 
 	if read_if_in_dict(config_parsed, "show_ui", True):
-		gen_ui_arg(args, read_if_in_dict(config_parsed, "ui_mode", "gtk"))
+		ui_mode = read_if_in_dict(config_parsed, "ui_mode", "gtk")
+		ui_display_card = read_if_in_dict(config_parsed, "ui_display_card", "virtio-vga-gl")
+		gen_ui_arg(args, ui_mode, ui_display_card)
 	else:
 		gen_no_ui_arg(args)
 

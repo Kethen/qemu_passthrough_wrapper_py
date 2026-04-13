@@ -29,6 +29,13 @@
 	},
 	"passthrough_list": [
 	],
+	"usb_passthrough_list":[
+		[
+			{
+				"id":"041e:323d"
+			}
+		]
+	],
 	"storage_list": [
 		{
 			"interface":"ide",

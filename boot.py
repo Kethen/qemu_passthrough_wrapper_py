@@ -532,6 +532,27 @@ def gen_extra_args(args, extras):
 	for arg in extras:
 		args.append(arg)
 
+def gen_usb_passthrough_arg(args, usb_passthrough_list):
+	controller_num=0
+	for controller in usb_passthrough_list:
+		controller_id = "usb_{0}".format(controller_num)
+		controller_num = controller_num + 1
+		args.append("-device")
+		args.append("nec-usb-xhci,id={0}".format(controller_id))
+		for device in controller:
+			if "id" in device:
+				id = device["id"].split(":")
+				vendor_id = id[0]
+				product_id = id[1]
+				args.append("-device")
+				args.append("usb-host,vendorid=0x{0},productid=0x{1},bus={2}.0".format(vendor_id, product_id, controller_id))
+			elif "host" in device:
+				host = device["host"].split(":")
+				bus = host[0]
+				addr = host[1]
+				args.append("-device")
+				args.append("usb-host,hostbus={0},hostaddr={1},bus={2}.0".format(bus, addr, controller_id))
+
 def main():
 	config = ""
 
@@ -596,6 +617,8 @@ def main():
 	passthrough_list = read_if_in_dict(config_parsed, "passthrough_list", [])
 	vfio_bind_devices(passthrough_list)
 	gen_passthrough_arg(args, passthrough_list)
+
+	gen_usb_passthrough_arg(args, read_if_in_dict(config_parsed, "usb_passthrough_list", []))
 
 	if read_if_in_dict(config_parsed, "tpm", False):
 		swtpm_binary = read_if_in_dict(config_parsed, "swtpm_binary", "swtpm")

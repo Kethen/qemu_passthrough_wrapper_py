@@ -36,6 +36,9 @@
 			}
 		]
 	],
+	"evdev_passthrough_list":[
+		"/dev/input/event28"
+	],
 	"storage_list": [
 		{
 			"interface":"ide",

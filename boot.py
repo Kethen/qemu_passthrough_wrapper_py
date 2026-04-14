@@ -553,6 +553,11 @@ def gen_usb_passthrough_arg(args, usb_passthrough_list):
 				args.append("-device")
 				args.append("usb-host,hostbus={0},hostaddr={1},bus={2}.0".format(bus, addr, controller_id))
 
+def gen_evdev_args(args, evdevs):
+	for evdev in evdevs:
+		args.append("-device")
+		args.append("virtio-input-host-pci,evdev={0}".format(evdev))
+
 def main():
 	config = ""
 
@@ -624,6 +629,8 @@ def main():
 		swtpm_binary = read_if_in_dict(config_parsed, "swtpm_binary", "swtpm")
 		run_swtpm("tpm_state", tpm_socket_path, swtpm_binary)
 		gen_tpm_arg(args, tpm_socket_path)
+
+	gen_evdev_args(args, read_if_in_dict(config_parsed, "evdev_passthrough_list", []))
 
 	run_qemu(args, read_if_in_dict(config_parsed, "qemu_binary", "qemu-kvm"))
 

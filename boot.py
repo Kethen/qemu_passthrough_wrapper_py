@@ -443,13 +443,30 @@ def run_swtpm(dir, socket_path, swtpm_binary):
 	if failure == 40:
 		print("swtpm start seems to have failed")
 
-def gen_tpm_arg(args, swtpm_socket_path):
+def gen_swtpm_arg(args, swtpm_socket_path):
 	args.append("-chardev")
 	args.append("socket,id=tpm_char_dev,path={0}".format(swtpm_socket_path))
 	args.append("-tpmdev")
 	args.append("emulator,id=tpm_dev,chardev=tpm_char_dev")
 	args.append("-device")
 	args.append("tpm-tis,tpmdev=tpm_dev")
+
+def gen_tpm_passthrough_arg(args, device_path):
+	args.append("-tpmdev")
+	args.append("passthrough,id=tpm_dev,path={0},cancel-path=/dev/null".format(device_path))
+	args.append("-device")
+	args.append("tpm-tis,tpmdev=tpm_dev")
+
+def setup_tpm(args, tpm_mode, swtpm_binary, tpm_path):
+	if tpm_mode == "none":
+		return
+	if tpm_mode == "swtpm":
+		run_swtpm("tpm_state", tpm_socket_path, swtpm_binary)
+		gen_swtpm_arg(args, tpm_socket_path)
+		return
+	if tpm_mode == "passthrough":
+		gen_tpm_passthrough_arg(args, tpm_path)
+		return
 
 def gen_passthrough_arg(args, passthrough_list):
 	port_id = 0
@@ -625,10 +642,11 @@ def main():
 
 	gen_usb_passthrough_arg(args, read_if_in_dict(config_parsed, "usb_passthrough_list", []))
 
-	if read_if_in_dict(config_parsed, "tpm", False):
-		swtpm_binary = read_if_in_dict(config_parsed, "swtpm_binary", "swtpm")
-		run_swtpm("tpm_state", tpm_socket_path, swtpm_binary)
-		gen_tpm_arg(args, tpm_socket_path)
+	tpm_mode = read_if_in_dict(config_parsed, "tpm", "none")
+	swtpm_binary = read_if_in_dict(config_parsed, "swtpm_binary", "swtpm")
+	tpm_path = read_if_in_dict(config_parsed, "tpm_path", "/dev/tpm0")
+
+	setup_tpm(args, tpm_mode, swtpm_binary, tpm_path)
 
 	gen_evdev_args(args, read_if_in_dict(config_parsed, "evdev_passthrough_list", []))
 

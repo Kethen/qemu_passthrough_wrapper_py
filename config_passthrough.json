@@ -128,7 +128,7 @@
 	},
 	"show_ui":false,
 	"ui_mode":"gtk",
-	"tpm":true,
+	"tpm":"swtpm",
 	"qemu_binary":"qemu-system-x86_64",
 	"swtpm_binary":"swtpm",
 	"readonly_nvram":true,
